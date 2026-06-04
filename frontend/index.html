@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinTrack — личный финансовый менеджер</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 0 auto; padding: 24px; background: #f5f6f8; color: #1a1a1a; }
+    h1 { font-size: 22px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    input, select, button { font-size: 15px; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd2d9; }
+    button { background: #2563eb; color: #fff; border: none; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .summary { display: flex; gap: 16px; }
+    .summary div { flex: 1; text-align: center; }
+    .summary b { display: block; font-size: 20px; }
+    .tx { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+    .income { color: #16a34a; }
+    .expense { color: #dc2626; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>FinTrack — учёт личных финансов</h1>
+
+  <div id="authCard" class="card">
+    <div class="row">
+      <input id="email" type="email" placeholder="E-mail" />
+      <input id="password" type="password" placeholder="Пароль (8+ символов)" />
+      <input id="fullName" type="text" placeholder="ФИО (для регистрации)" />
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="register()">Регистрация</button>
+      <button onclick="login()">Войти</button>
+    </div>
+    <p id="authMsg" style="color:#dc2626"></p>
+  </div>
+
+  <div id="appCard" class="hidden">
+    <div class="card summary">
+      <div>Доходы<b id="sIncome" class="income">—</b></div>
+      <div>Расходы<b id="sExpense" class="expense">—</b></div>
+      <div>Баланс<b id="sBalance">—</b></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <select id="kind">
+          <option value="expense">Расход</option>
+          <option value="income">Доход</option>
+        </select>
+        <input id="amount" type="number" min="0" step="0.01" placeholder="Сумма, ₽" />
+        <input id="note" type="text" placeholder="Комментарий" />
+        <button onclick="addTx()">Добавить</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Последние операции</h3>
+      <div id="txList"></div>
+    </div>
+  </div>
+
+  <script>
+    const api = (p) => '/api' + p;
+    let token = null;
+
+    function authHeaders() {
+      return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+    }
+
+    async function register() {
+      const body = {
+        email: email.value, password: password.value, fullName: fullName.value,
+      };
+      const r = await fetch(api('/auth/register'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (r.ok) { token = data.token; showApp(); } else { authMsg.textContent = JSON.stringify(data); }
+    }
+
+    async function login() {
+      const r = await fetch(api('/auth/login'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.value, password: password.value }),
+      });
+      const data = await r.json();
+      if (r.ok) { token = data.token; showApp(); } else { authMsg.textContent = data.error || 'Ошибка'; }
+    }
+
+    function showApp() {
+      authCard.classList.add('hidden');
+      appCard.classList.remove('hidden');
+      refresh();
+    }
+
+    async function addTx() {
+      await fetch(api('/transactions'), {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ kind: kind.value, amount: amount.value, note: note.value }),
+      });
+      amount.value = ''; note.value = '';
+      refresh();
+    }
+
+    async function refresh() {
+      const s = await (await fetch(api('/transactions/summary'), { headers: authHeaders() })).json();
+      sIncome.textContent = s.incomeRub.toFixed(2) + ' ₽';
+      sExpense.textContent = s.expenseRub.toFixed(2) + ' ₽';
+      sBalance.textContent = s.balanceRub.toFixed(2) + ' ₽';
+
+      const list = await (await fetch(api('/transactions'), { headers: authHeaders() })).json();
+      txList.innerHTML = list.map((t) =>
+        `<div class="tx"><span>${t.spent_at} — ${t.note || 'без описания'}</span>
+         <span class="${t.kind}">${t.kind === 'income' ? '+' : '−'}${(t.amount / 100).toFixed(2)} ₽</span></div>`
+      ).join('') || '<p>Операций пока нет.</p>';
+    }
+  </script>
+</body>
+</html>
